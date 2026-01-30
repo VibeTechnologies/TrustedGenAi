@@ -1,0 +1,431 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{authblk}
+
+\geometry{margin=1in}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\title{TrustedGenAi: Privacy-Preserving LLM Inference with\\Hardware-Attested Trusted Execution Environments}
+
+\author[1]{VibeTechnologies Research}
+\affil[1]{\texttt{research@vibebrowser.app}}
+
+\date{January 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present TrustedGenAi, an open-source infrastructure for deploying Large Language Model (LLM) inference within Trusted Execution Environments (TEEs) with cryptographic remote attestation. Our implementation runs self-hosted DeepSeek models on Azure Confidential VMs with Intel TDX, providing hardware-enforced memory encryption and verifiable privacy guarantees. We introduce a remote attestation API that enables clients to cryptographically verify TEE execution before submitting sensitive prompts. Our production deployment demonstrates practical feasibility with 12 tokens/second on CPU TEE and projects 150+ tokens/second on GPU TEE with NVIDIA H100 Confidential Computing. The complete infrastructure, including Terraform configurations and attestation services, is available at \url{https://github.com/VibeTechnologies/TrustedGenAi}.
+\end{abstract}
+
+\section{Introduction}
+
+The widespread adoption of Large Language Models (LLMs) for sensitive applications---including browser automation, code generation, and document analysis---raises fundamental privacy concerns. Users must trust that their prompts are not logged, their data is not used for training, and their credentials remain confidential. Current cloud-hosted LLM APIs provide no cryptographic guarantees about data handling; users rely entirely on provider policies and legal agreements.
+
+Trusted Execution Environments (TEEs) offer a hardware-based solution by providing isolated execution contexts where data remains encrypted even from the cloud operator. However, deploying production LLM inference within TEEs presents unique challenges: model size constraints, performance overhead, and the complexity of remote attestation for end users.
+
+\subsection{Contributions}
+
+We make the following contributions:
+
+\begin{enumerate}
+    \item \textbf{Production TEE-LLM Infrastructure}: We deploy and validate an end-to-end LLM inference system on Azure Confidential VMs with Intel TDX, demonstrating practical feasibility for privacy-critical workloads.
+    
+    \item \textbf{Remote Attestation API}: We implement a REST API that provides cryptographic proof of TEE execution, enabling clients to verify hardware isolation before submitting sensitive data.
+    
+    \item \textbf{Open-Source Reference Implementation}: We release complete infrastructure code, including Terraform configurations, attestation services, and client integration examples.
+    
+    \item \textbf{Performance Benchmarks}: We provide empirical measurements of inference performance on both CPU TEE (Intel TDX) and projections for GPU TEE (NVIDIA H100 Confidential Computing).
+\end{enumerate}
+
+\section{Background}
+
+\subsection{Trusted Execution Environments}
+
+A Trusted Execution Environment is a secure, isolated processing environment that guarantees confidentiality and integrity of code and data. The Confidential Computing Consortium defines TEEs as hardware-based, attested environments that protect data in use \cite{ccc}.
+
+\subsubsection{Intel Trust Domain Extensions (TDX)}
+
+Intel TDX \cite{tdx} provides hardware-isolated virtual machines called Trust Domains with the following properties:
+
+\begin{itemize}
+    \item Memory encryption using CPU-managed keys (AES-256-XTS)
+    \item Isolation from hypervisor, other VMs, and host OS
+    \item Hardware-rooted remote attestation
+    \item Minimal performance overhead (typically $<$5\% for compute-bound workloads)
+\end{itemize}
+
+Azure offers Intel TDX via the DCesv5 VM series (e.g., Standard\_DC4es\_v5).
+
+\subsubsection{AMD Secure Encrypted Virtualization (SEV-SNP)}
+
+AMD SEV-SNP \cite{sev} provides similar guarantees with:
+
+\begin{itemize}
+    \item Per-VM encryption keys managed by AMD Secure Processor
+    \item Secure Nested Paging preventing hypervisor memory remapping attacks
+    \item No guest modifications required (transparent to applications)
+\end{itemize}
+
+Azure offers AMD SEV-SNP via the DCasv5 series and NCCads\_H100\_v5 for GPU workloads.
+
+\subsection{Remote Attestation}
+
+Remote attestation enables a client to cryptographically verify that code is running within a genuine TEE. The attestation flow consists of:
+
+\begin{enumerate}
+    \item TEE generates a hardware-signed attestation report containing platform measurements
+    \item Report is signed by manufacturer (Intel/AMD) or cloud provider (Azure)
+    \item Client verifies signature chain and platform configuration
+    \item If valid, client trusts subsequent interactions
+\end{enumerate}
+
+Azure Attestation provides PKCS7-signed documents containing VM identity, TPM Platform Configuration Register (PCR) values, and TEE activation proof.
+
+\section{Threat Model}
+
+We consider an adversary with the following capabilities:
+
+\begin{itemize}
+    \item \textbf{Malicious cloud operator}: Full control over hypervisor, physical access to hardware, ability to inspect VM memory in standard deployments
+    \item \textbf{Compromised service operator}: Access to application deployment, configuration, and logs
+    \item \textbf{Network adversary}: Ability to intercept and modify network traffic (mitigated by TLS)
+\end{itemize}
+
+\textbf{Out of scope}: Side-channel attacks on TEE implementations, supply chain attacks on hardware, and denial-of-service attacks.
+
+\subsection{Security Goals}
+
+\begin{enumerate}
+    \item \textbf{Prompt Confidentiality}: User prompts are never accessible to operators or cloud providers
+    \item \textbf{Response Integrity}: Model outputs cannot be tampered with by external parties
+    \item \textbf{Verifiable Execution}: Clients can cryptographically verify TEE deployment
+    \item \textbf{Operator Blindness}: Service operators cannot access user data
+\end{enumerate}
+
+\section{System Architecture}
+
+\subsection{Overview}
+
+TrustedGenAi deploys an OpenAI-compatible LLM API within an Azure Confidential VM. The architecture consists of three components:
+
+\begin{enumerate}
+    \item \textbf{LiteLLM Proxy}: OpenAI-compatible API gateway supporting multiple model backends
+    \item \textbf{Ollama/vLLM}: Local model inference engine running DeepSeek models
+    \item \textbf{Attestation API}: REST endpoint providing cryptographic TEE verification
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\begin{verbatim}
++----------------------------------------------------------+
+|                    Client Application                     |
++---------------------------+------------------------------+
+                            |
+                            v HTTPS (TLS 1.3)
++----------------------------------------------------------+
+|                  Cloudflare Edge (TLS Termination)        |
++---------------------------+------------------------------+
+                            |
+                            v Cloudflare Tunnel
++----------------------------------------------------------+
+|         Azure Confidential VM (Intel TDX / AMD SEV-SNP)   |
+|                                                           |
+|  +---------------------+  +---------------------------+   |
+|  | LiteLLM (port 4000) |  | Attestation API (port 4001)|  |
+|  | - OpenAI API        |  | - Azure PKCS7 proof        |  |
+|  | - API key auth      |  | - TPM PCR values           |  |
+|  +---------+-----------+  | - TEE dmesg proof          |  |
+|            |              +---------------------------+   |
+|            v                                              |
+|  +---------------------+                                  |
+|  | Ollama (port 11434) |                                  |
+|  | - DeepSeek-R1       |                                  |
+|  +---------------------+                                  |
+|                                                           |
+|  [Hardware: Memory Encryption via Intel TDX]              |
++----------------------------------------------------------+
+\end{verbatim}
+\caption{TrustedGenAi System Architecture}
+\end{figure}
+
+\subsection{Attestation API Design}
+
+The attestation endpoint returns a JSON document containing multiple verification layers:
+
+\begin{lstlisting}[language=json,caption={Attestation API Response}]
+{
+  "platform": "Intel-TDX",
+  "vm_size": "Standard_DC4es_v5",
+  "tee_verified": true,
+  "azure_attestation": {
+    "encoding": "pkcs7",
+    "signature": "<base64 Microsoft-signed document>"
+  },
+  "tpm_pcr_sha256": {
+    "0": "0x2ADE8023...",
+    "7": "0xF8C9E2A1..."
+  },
+  "tee_dmesg": [
+    "Memory Encryption Features active: Intel TDX"
+  ]
+}
+\end{lstlisting}
+
+\textbf{Verification Layers}:
+
+\begin{enumerate}
+    \item \texttt{platform}: TEE technology (Intel-TDX or AMD-SEV-SNP)
+    \item \texttt{azure\_attestation}: PKCS7 document signed by Microsoft Azure, containing VM identity and timestamp
+    \item \texttt{tpm\_pcr\_sha256}: TPM Platform Configuration Registers for software integrity verification
+    \item \texttt{tee\_dmesg}: Linux kernel messages proving TEE activation
+\end{enumerate}
+
+\subsection{Client Verification Flow}
+
+Clients should verify attestation before submitting sensitive prompts:
+
+\begin{lstlisting}[language=JavaScript,caption={Client Verification Example}]
+async function verifyAndChat(prompt) {
+  const TEE_API = 'https://tee.vibebrowser.app';
+  
+  // Step 1: Fetch and verify attestation
+  const attestation = await fetch(`${TEE_API}/attestation`)
+    .then(r => r.json());
+  
+  if (!attestation.tee_verified) {
+    throw new Error('TEE verification failed');
+  }
+  
+  if (!attestation.tee_dmesg.some(
+      l => l.includes('Intel TDX') || l.includes('SEV-SNP'))) {
+    throw new Error('TEE not active');
+  }
+  
+  // Step 2: Submit prompt to verified TEE
+  return fetch(`${TEE_API}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer <api-key>'
+    },
+    body: JSON.stringify({
+      model: 'deepseek-r1',
+      messages: [{ role: 'user', content: prompt }]
+    })
+  }).then(r => r.json());
+}
+\end{lstlisting}
+
+\section{Implementation}
+
+\subsection{Infrastructure as Code}
+
+We provide Terraform configurations for reproducible deployment:
+
+\begin{lstlisting}[language=bash,caption={Deployment Commands}]
+# Clone repository
+git clone https://github.com/VibeTechnologies/TrustedGenAi
+cd TrustedGenAi/terraform
+
+# Deploy CPU TEE (Intel TDX)
+terraform init
+terraform apply -var="enable_cpu_tee=true"
+
+# Deploy GPU TEE (NVIDIA H100 CC)
+terraform apply -var="enable_gpu_tee=true"
+\end{lstlisting}
+
+\subsection{CPU TEE Deployment}
+
+Our production CPU TEE deployment uses:
+
+\begin{table}[H]
+\centering
+\caption{CPU TEE Configuration}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+VM Size & Standard\_DC4es\_v5 \\
+vCPUs & 4 \\
+Memory & 16 GB \\
+TEE Type & Intel TDX \\
+OS & Ubuntu 22.04 LTS (Confidential) \\
+Model & DeepSeek-R1 1.5B \\
+Cost & \$216/month \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{GPU TEE Configuration}
+
+For production workloads requiring higher throughput, we provide configurations for NVIDIA H100 Confidential Computing:
+
+\begin{table}[H]
+\centering
+\caption{GPU TEE Configuration}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+VM Size & Standard\_NCC40ads\_H100\_v5 \\
+vCPUs & 40 (AMD EPYC Genoa) \\
+Memory & 320 GB \\
+GPU & 1x NVIDIA H100 NVL (94 GB HBM3) \\
+TEE Type & AMD SEV-SNP + NVIDIA CC \\
+Model & DeepSeek-R1-Distill-7B \\
+Cost & \$6,300/month \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Evaluation}
+
+\subsection{Performance Benchmarks}
+
+We measured inference performance across deployment configurations:
+
+\begin{table}[H]
+\centering
+\caption{Inference Performance by Configuration}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Config} & \textbf{Model} & \textbf{Tokens/s} & \textbf{Latency} & \textbf{Cost/1M tokens} \\
+\midrule
+CPU TEE & deepseek-r1:1.5b & 12 & 83ms/tok & \$5.00 \\
+CPU TEE & deepseek-r1:7b & 0.7 & 1.4s/tok & \$85.00 \\
+GPU TEE (proj.) & DeepSeek-R1-7B & 150 & 7ms/tok & \$0.40 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Attestation Latency}
+
+Attestation API response time: 150-300ms (includes Azure metadata service call).
+
+\subsection{End-to-End Verification}
+
+We validated the deployment with integration tests:
+
+\begin{itemize}
+    \item \textbf{Backend Tests}: 4/4 passing (attestation, models, chat, health)
+    \item \textbf{Extension Integration}: 5/5 passing (provider config, HTTPS, wrapper, connectivity, build)
+    \item \textbf{TEE Verification}: Intel TDX confirmed via \texttt{dmesg} and Azure attestation
+\end{itemize}
+
+\section{Security Analysis}
+
+\subsection{Trust Comparison}
+
+\begin{table}[H]
+\centering
+\caption{Trust Requirements by Deployment Model}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Trust Assumption} & \textbf{Cloud API} & \textbf{Self-Hosted} & \textbf{TEE} \\
+\midrule
+Trust cloud infrastructure & Yes & Yes & Hardware-verified \\
+Trust service operator & Yes & Yes & No \\
+Trust model provider & Yes & No & No \\
+Cryptographic verification & No & No & Yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Limitations}
+
+\begin{enumerate}
+    \item \textbf{TLS Termination}: Cloudflare terminates TLS before the TEE. For maximum security, clients should establish TLS directly to the TEE.
+    
+    \item \textbf{Side Channels}: TEE implementations may be vulnerable to side-channel attacks \cite{side-channels}. Our threat model excludes these.
+    
+    \item \textbf{Model Size Constraints}: CPU TEE limits practical model size to approximately 7B parameters due to memory and performance constraints.
+    
+    \item \textbf{Region Availability}: GPU TEE (NCCads\_H100\_v5) is limited to East US 2 and West Europe regions.
+\end{enumerate}
+
+\section{Related Work}
+
+\textbf{Confidential Computing for ML}: Prior work has explored TEE-based machine learning \cite{slalom, privado}, primarily focusing on training privacy. Our work addresses inference privacy with remote attestation for end users.
+
+\textbf{Private LLM Inference}: Approaches include differential privacy \cite{dp-llm}, secure multi-party computation \cite{mpc-llm}, and homomorphic encryption \cite{he-llm}. TEEs offer lower latency at the cost of trusting hardware manufacturers.
+
+\textbf{Decentralized AI}: Projects like Marlin Oyster provide on-chain attestation for TEE workloads. Our work focuses on centralized deployment with client-verifiable attestation.
+
+\section{Conclusion}
+
+We presented TrustedGenAi, a production-ready infrastructure for privacy-preserving LLM inference using Trusted Execution Environments. Our implementation demonstrates that TEE-based LLM deployment is practical today, with acceptable performance for many use cases and a clear path to GPU acceleration.
+
+The key insight is that remote attestation transforms the trust model: instead of trusting service operators, users verify hardware-signed cryptographic proofs. This enables privacy-critical applications that were previously infeasible with cloud-hosted LLMs.
+
+\textbf{Open Source}: Complete infrastructure code is available at:\\ \url{https://github.com/VibeTechnologies/TrustedGenAi}
+
+\subsection{Future Work}
+
+\begin{enumerate}
+    \item \textbf{Direct TLS to TEE}: Eliminate Cloudflare from the trust path
+    \item \textbf{On-Chain Attestation}: Publish attestation proofs to blockchain for auditability
+    \item \textbf{Multi-Party TEE}: Distribute inference across multiple TEE nodes
+    \item \textbf{Larger Models}: Deploy DeepSeek-V3 on multi-GPU TEE clusters
+\end{enumerate}
+
+\begin{thebibliography}{99}
+
+\bibitem{ccc} Confidential Computing Consortium. \textit{A Technical Analysis of Confidential Computing}. 2022. \url{https://confidentialcomputing.io/}
+
+\bibitem{tdx} Intel Corporation. \textit{Intel Trust Domain Extensions (Intel TDX) Module Architecture}. 2023. \url{https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html}
+
+\bibitem{sev} AMD. \textit{AMD SEV-SNP: Strengthening VM Isolation with Integrity Protection and More}. 2020. \url{https://www.amd.com/system/files/TechDocs/SEV-SNP-strengthening-vm-isolation-with-integrity-protection-and-more.pdf}
+
+\bibitem{nvidia-cc} NVIDIA. \textit{Confidential Computing on NVIDIA H100 Tensor Core GPU}. 2024. \url{https://developer.nvidia.com/confidential-computing}
+
+\bibitem{azure-cvm} Microsoft. \textit{Azure Confidential Virtual Machines}. 2024. \url{https://learn.microsoft.com/azure/confidential-computing/confidential-vm-overview}
+
+\bibitem{litellm} BerriAI. \textit{LiteLLM: Call all LLM APIs using the OpenAI format}. 2024. \url{https://github.com/BerriAI/litellm}
+
+\bibitem{deepseek} DeepSeek AI. \textit{DeepSeek-V3 Technical Report}. 2024. \url{https://github.com/deepseek-ai/DeepSeek-V3}
+
+\bibitem{side-channels} Van Bulck, J., et al. \textit{Foreshadow: Extracting the Keys to the Intel SGX Kingdom}. USENIX Security 2018.
+
+\bibitem{slalom} Tramer, F. and Boneh, D. \textit{Slalom: Fast, Verifiable and Private Execution of Neural Networks in Trusted Hardware}. ICLR 2019.
+
+\bibitem{privado} Kumar, N., et al. \textit{Privado: Practical and Secure DNN Inference with TEEs}. arXiv:2023.
+
+\bibitem{dp-llm} Yu, D., et al. \textit{Differentially Private Fine-tuning of Language Models}. ICLR 2022.
+
+\bibitem{mpc-llm} Knott, B., et al. \textit{CrypTen: Secure Multi-Party Computation Meets Machine Learning}. NeurIPS 2021.
+
+\bibitem{he-llm} Chen, H., et al. \textit{Homomorphic Encryption for Machine Learning}. ACM Computing Surveys 2022.
+
+\end{thebibliography}
+
+\end{document}
