@@ -288,9 +288,58 @@ Cost & \$216/month \\
 \end{tabular}
 \end{table}
 
-\subsection{GPU TEE Configuration (Projected)}
+\subsection{GPU TEE with NVIDIA Confidential Computing}
 
-For production workloads requiring higher throughput, we provide Terraform configurations for NVIDIA H100 Confidential Computing. \textbf{Note: GPU TEE has not been deployed; the following specifications and performance numbers are projections based on hardware capabilities.}
+For production workloads requiring high throughput, GPU-accelerated TEE provides the optimal solution. NVIDIA H100 Tensor Core GPUs support Confidential Computing mode, extending the TEE boundary from CPU to GPU with hardware-based memory encryption \cite{nvidia-cc}.
+
+\subsubsection{NVIDIA H100 Confidential Computing Architecture}
+
+The NVIDIA H100 GPU implements Confidential Computing through:
+
+\begin{itemize}
+    \item \textbf{GPU Memory Encryption}: HBM3 memory is encrypted with keys managed by the GPU's security processor
+    \item \textbf{Secure Channel}: Encrypted PCIe communication between CPU TEE and GPU TEE
+    \item \textbf{GPU Attestation}: Hardware-rooted attestation reports verifying GPU confidential mode
+    \item \textbf{Isolation}: GPU memory isolated from host OS, hypervisor, and other VMs
+\end{itemize}
+
+\subsubsection{Cloud Provider Availability}
+
+\begin{table}[H]
+\centering
+\caption{GPU TEE Availability by Cloud Provider}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Provider} & \textbf{VM Series} & \textbf{GPU} & \textbf{TEE Type} \\
+\midrule
+Azure & NCCads\_H100\_v5 & 1-4x H100 NVL & AMD SEV-SNP + NVIDIA CC \\
+Google Cloud & A3 Confidential & 8x H100 & Intel TDX + NVIDIA CC \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{DeepSeek Deployment on GPU TEE}
+
+DeepSeek models can be efficiently deployed on GPU TEE:
+
+\begin{table}[H]
+\centering
+\caption{DeepSeek Model Fit on NVIDIA H100 (94GB HBM3)}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Model} & \textbf{Precision} & \textbf{VRAM} & \textbf{Fits on 1x H100} \\
+\midrule
+DeepSeek-R1-Distill-1.5B & FP16 & 3 GB & Yes \\
+DeepSeek-R1-Distill-7B & FP16 & 14 GB & Yes \\
+DeepSeek-R1-Distill-14B & FP16 & 28 GB & Yes \\
+DeepSeek-R1-Distill-32B & FP16 & 64 GB & Yes \\
+DeepSeek-R1-Distill-70B & FP8 & 70 GB & Yes \\
+DeepSeek-V3 (671B MoE) & FP8 & 80-90 GB & Yes (37B active) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Note}: GPU TEE has not been deployed in our production environment; the following specifications are projections based on hardware capabilities and vendor documentation.
 
 \begin{table}[H]
 \centering
@@ -304,11 +353,30 @@ vCPUs & 40 (AMD EPYC Genoa) \\
 Memory & 320 GB \\
 GPU & 1x NVIDIA H100 NVL (94 GB HBM3) \\
 TEE Type & AMD SEV-SNP + NVIDIA CC \\
-Model & DeepSeek-R1-Distill-7B \\
+Model & DeepSeek-R1-Distill-70B (FP8) \\
+Projected Throughput & 150-300 tokens/sec \\
 Cost & \$6,300/month \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{TPU TEE: Current Limitations}
+
+Google Cloud TPUs (Tensor Processing Units) currently \textbf{do not support Confidential Computing}. Unlike NVIDIA GPUs with hardware-level encryption, TPUs lack:
+
+\begin{itemize}
+    \item Hardware memory encryption for TPU HBM
+    \item Secure channel establishment with CPU TEE
+    \item Hardware-rooted attestation for TPU workloads
+\end{itemize}
+
+\textbf{Implication}: For privacy-critical LLM inference requiring hardware attestation, NVIDIA H100 Confidential Computing is the only available GPU TEE option. TPU workloads cannot currently provide cryptographic privacy guarantees equivalent to CPU/GPU TEE deployments.
+
+\textbf{Future Outlook}: As confidential computing adoption grows, TPU TEE support may emerge. Organizations requiring TPU performance for large-scale LLM inference must currently choose between:
+\begin{enumerate}
+    \item Performance (TPU without TEE) with policy-based privacy guarantees
+    \item Privacy (GPU TEE with H100) with hardware-verified guarantees
+\end{enumerate}
 
 \section{Evaluation}
 
@@ -410,23 +478,57 @@ The key insight is that remote attestation transforms the trust model: instead o
 
 \bibitem{nvidia-cc} NVIDIA. \textit{Confidential Computing on NVIDIA H100 Tensor Core GPU}. 2024. \url{https://developer.nvidia.com/confidential-computing}
 
+\bibitem{nvidia-h100-arch} NVIDIA. \textit{NVIDIA H100 Tensor Core GPU Architecture Whitepaper}. 2022. \url{https://resources.nvidia.com/en-us-hopper-architecture/nvidia-h100-tensor-c}
+
+\bibitem{nvidia-cc-whitepaper} NVIDIA. \textit{NVIDIA Confidential Computing: Protecting Data in Use on GPUs}. 2023. \url{https://www.nvidia.com/en-us/data-center/solutions/confidential-computing/}
+
 \bibitem{azure-cvm} Microsoft. \textit{Azure Confidential Virtual Machines}. 2024. \url{https://learn.microsoft.com/azure/confidential-computing/confidential-vm-overview}
+
+\bibitem{azure-attestation} Microsoft. \textit{Azure Attestation Overview}. 2024. \url{https://learn.microsoft.com/azure/attestation/overview}
+
+\bibitem{azure-acc-h100} Microsoft. \textit{NCCadsH100v5-series Confidential VMs}. 2024. \url{https://learn.microsoft.com/azure/virtual-machines/nccadsh100-v5-series}
+
+\bibitem{gcp-cvm} Google Cloud. \textit{Confidential VM Overview}. 2024. \url{https://cloud.google.com/confidential-computing/confidential-vm/docs/about-cvm}
+
+\bibitem{gcp-gpu-cvm} Google Cloud. \textit{Create a Confidential VM Instance with GPU}. 2024. \url{https://cloud.google.com/confidential-computing/confidential-vm/docs/create-a-confidential-vm-instance-with-gpu}
 
 \bibitem{litellm} BerriAI. \textit{LiteLLM: Call all LLM APIs using the OpenAI format}. 2024. \url{https://github.com/BerriAI/litellm}
 
 \bibitem{deepseek} DeepSeek AI. \textit{DeepSeek-V3 Technical Report}. 2024. \url{https://github.com/deepseek-ai/DeepSeek-V3}
 
+\bibitem{deepseek-r1} DeepSeek AI. \textit{DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning}. 2025. \url{https://arxiv.org/abs/2501.12948}
+
+\bibitem{ollama} Ollama. \textit{Ollama: Run Large Language Models Locally}. 2024. \url{https://github.com/ollama/ollama}
+
+\bibitem{vllm} Kwon, W., et al. \textit{Efficient Memory Management for Large Language Model Serving with PagedAttention}. SOSP 2023. \url{https://arxiv.org/abs/2309.06180}
+
 \bibitem{side-channels} Van Bulck, J., et al. \textit{Foreshadow: Extracting the Keys to the Intel SGX Kingdom}. USENIX Security 2018.
+
+\bibitem{sgx-attacks} Costan, V. and Devadas, S. \textit{Intel SGX Explained}. IACR Cryptology ePrint Archive 2016. \url{https://eprint.iacr.org/2016/086}
 
 \bibitem{slalom} Tramer, F. and Boneh, D. \textit{Slalom: Fast, Verifiable and Private Execution of Neural Networks in Trusted Hardware}. ICLR 2019.
 
 \bibitem{privado} Kumar, N., et al. \textit{Privado: Practical and Secure DNN Inference with TEEs}. arXiv:2023.
+
+\bibitem{mlcapsule} Hanzlik, L., et al. \textit{MLCapsule: Guarded Offline Deployment of Machine Learning as a Service}. CVPR 2021.
 
 \bibitem{dp-llm} Yu, D., et al. \textit{Differentially Private Fine-tuning of Language Models}. ICLR 2022.
 
 \bibitem{mpc-llm} Knott, B., et al. \textit{CrypTen: Secure Multi-Party Computation Meets Machine Learning}. NeurIPS 2021.
 
 \bibitem{he-llm} Chen, H., et al. \textit{Homomorphic Encryption for Machine Learning}. ACM Computing Surveys 2022.
+
+\bibitem{secureml} Mohassel, P. and Zhang, Y. \textit{SecureML: A System for Scalable Privacy-Preserving Machine Learning}. IEEE S\&P 2017.
+
+\bibitem{marlin} Marlin Protocol. \textit{Oyster: Verifiable Serverless Computing}. 2024. \url{https://www.marlin.org/oyster}
+
+\bibitem{phala} Phala Network. \textit{Phala: Trustless Cloud Computing on TEE}. 2024. \url{https://phala.network/}
+
+\bibitem{oasis} Oasis Labs. \textit{Oasis Network: Privacy-Preserving Smart Contracts}. 2024. \url{https://oasisprotocol.org/}
+
+\bibitem{terraform} HashiCorp. \textit{Terraform: Infrastructure as Code}. 2024. \url{https://www.terraform.io/}
+
+\bibitem{cloudflare-tunnel} Cloudflare. \textit{Cloudflare Tunnel: Secure Connections Without Public IPs}. 2024. \url{https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/}
 
 \end{thebibliography}
 
