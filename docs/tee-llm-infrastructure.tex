@@ -92,12 +92,33 @@ Azure offers Intel TDX via the DCesv5 VM series (e.g., Standard\_DC4es\_v5).
 AMD SEV-SNP \cite{sev} provides similar guarantees with:
 
 \begin{itemize}
-    \item Per-VM encryption keys managed by AMD Secure Processor
+    \item Per-VM encryption keys managed by AMD Secure Processor (AES-128)
     \item Secure Nested Paging preventing hypervisor memory remapping attacks
     \item No guest modifications required (transparent to applications)
 \end{itemize}
 
 Azure offers AMD SEV-SNP via the DCasv5 series and NCCads\_H100\_v5 for GPU workloads.
+
+\subsubsection{Platform Comparison}
+
+\begin{table}[H]
+\centering
+\caption{Intel TDX vs AMD SEV-SNP Comparison}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Feature} & \textbf{Intel TDX} & \textbf{AMD SEV-SNP} \\
+\midrule
+Memory Encryption & AES-256-XTS & AES-128 \\
+Key Management & CPU-managed & AMD Secure Processor \\
+Attestation Chain & Intel $\rightarrow$ Microsoft & AMD $\rightarrow$ Microsoft \\
+Azure VM Series & DCesv5 & DCasv5 \\
+Cost (4 vCPU, 16GB) & \$216/month & \$140/month \\
+GPU TEE Support & Google Cloud only & Azure (H100) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both platforms provide equivalent security for LLM inference: hardware-encrypted memory isolation from cloud operators. AMD SEV-SNP offers approximately 35\% cost savings on Azure, making it the recommended choice for cost-sensitive deployments.
 
 \subsection{Remote Attestation}
 
@@ -267,6 +288,23 @@ terraform apply -var="enable_gpu_tee=true"
 \end{lstlisting}
 
 \subsection{CPU TEE Deployment}
+
+Azure offers two CPU TEE options with equivalent security guarantees but different pricing:
+
+\begin{table}[H]
+\centering
+\caption{CPU TEE Platform Comparison (Azure, 4 vCPU / 16 GB)}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Platform} & \textbf{VM Series} & \textbf{Cost/Month} & \textbf{Savings} \\
+\midrule
+AMD SEV-SNP & DCasv5 (Standard\_DC4as\_v5) & \$140 & \textbf{35\% cheaper} \\
+Intel TDX & DCesv5 (Standard\_DC4es\_v5) & \$216 & baseline \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Recommendation}: For equivalent security guarantees, AMD SEV-SNP provides 35\% cost savings. Both platforms offer hardware-encrypted memory, hypervisor isolation, and Microsoft-signed attestation. The choice between vendors is primarily economic.
 
 Our production CPU TEE deployment uses:
 
