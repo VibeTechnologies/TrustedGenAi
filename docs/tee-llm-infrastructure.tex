@@ -318,6 +318,38 @@ Google Cloud & A3 Confidential & 8x H100 & Intel TDX + NVIDIA CC \\
 \end{tabular}
 \end{table}
 
+\subsubsection{Open-Weight Models on GPU TEE}
+
+A key advantage of TEE infrastructure is the ability to run any open-weight model with full privacy guarantees. The following table shows major open-weight model families compatible with GPU TEE deployment:
+
+\begin{table}[H]
+\centering
+\caption{Open-Weight Models Compatible with GPU TEE (NVIDIA H100)}
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Model Family} & \textbf{Organization} & \textbf{Sizes} & \textbf{VRAM (FP16)} & \textbf{License} \\
+\midrule
+DeepSeek-R1 & DeepSeek & 1.5B--671B & 3--80 GB & MIT \\
+DeepSeek-V3 & DeepSeek & 671B MoE & 80 GB (37B active) & MIT \\
+Llama 3.3 & Meta & 70B & 140 GB & Llama 3 \\
+Llama 3.1 & Meta & 8B--405B & 16--810 GB & Llama 3 \\
+Qwen 2.5 & Alibaba & 0.5B--72B & 1--144 GB & Apache 2.0 \\
+QwQ & Alibaba & 32B & 64 GB & Apache 2.0 \\
+Mistral Large 2 & Mistral & 123B & 246 GB & Apache 2.0 \\
+Mixtral 8x22B & Mistral & 141B MoE & 88 GB (44B active) & Apache 2.0 \\
+Codestral & Mistral & 22B & 44 GB & MNPL \\
+Kimi K2 & Moonshot & 1T MoE & 80 GB (32B active) & MIT \\
+MiniMax-M1 & MiniMax & 456B MoE & 80 GB (45B active) & Apache 2.0 \\
+Gemma 2 & Google & 2B--27B & 4--54 GB & Gemma \\
+Command R+ & Cohere & 104B & 208 GB & CC-BY-NC \\
+DBRX & Databricks & 132B MoE & 80 GB (36B active) & Apache 2.0 \\
+Phi-4 & Microsoft & 14B & 28 GB & MIT \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Note}: MoE (Mixture of Experts) models show total parameters with active parameters in parentheses. Active parameters determine actual VRAM usage during inference.
+
 \subsubsection{DeepSeek Deployment on GPU TEE}
 
 DeepSeek models can be efficiently deployed on GPU TEE:
