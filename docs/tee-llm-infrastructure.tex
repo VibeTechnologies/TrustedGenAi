@@ -31,12 +31,10 @@
     urlcolor=blue
 }
 
-\title{TrustedGenAi: Privacy-Preserving LLM Inference with\\Hardware-Attested Trusted Execution Environments}
+\title{Privacy-Preserving LLM Inference with\\Hardware-Attested Trusted Execution Environments}
 
 \author[1]{Dzianis Vashchuk}
-\author[2]{Claude-Opus-4.5\thanks{AI research assistant. Contributions include infrastructure implementation, documentation, and code generation.}}
 \affil[1]{Vibe Technologies, LLC, \texttt{dzianisvv@gmail.com}}
-\affil[2]{Anthropic}
 
 \date{January 2026}
 
@@ -45,7 +43,7 @@
 \maketitle
 
 \begin{abstract}
-We present TrustedGenAi, an open-source infrastructure for deploying Large Language Model (LLM) inference within Trusted Execution Environments (TEEs) with cryptographic remote attestation. Our implementation runs self-hosted DeepSeek models on Azure Confidential VMs with Intel TDX, providing hardware-enforced memory encryption and verifiable privacy guarantees. We introduce a remote attestation API that enables clients to cryptographically verify TEE execution before submitting sensitive prompts. Our production deployment demonstrates practical feasibility with 12 tokens/second on CPU TEE and projects 150+ tokens/second on GPU TEE with NVIDIA H100 Confidential Computing. The complete infrastructure, including Terraform configurations and attestation services, is available at \url{https://github.com/VibeTechnologies/TrustedGenAi}.
+We present an open-source infrastructure for deploying Large Language Model (LLM) inference within Trusted Execution Environments (TEEs) with cryptographic remote attestation. Our implementation runs self-hosted DeepSeek models on Azure Confidential VMs with Intel TDX, providing hardware-enforced memory encryption and verifiable privacy guarantees. We introduce a remote attestation API that enables clients to cryptographically verify TEE execution before submitting sensitive prompts. Our production deployment demonstrates practical feasibility with 12 tokens/second on CPU TEE and projects 150+ tokens/second on GPU TEE with NVIDIA H100 Confidential Computing. The complete infrastructure, including Terraform configurations and attestation services, is available at \url{https://github.com/VibeTechnologies/TrustedGenAi}.
 \end{abstract}
 
 \section{Introduction}
