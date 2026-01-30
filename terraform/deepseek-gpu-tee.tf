@@ -19,7 +19,7 @@
 #   - DeepSeek-V3 (671B MoE, 37B activated): Fits on 1x H100 in FP8 (~70-80GB VRAM)
 #   - DeepSeek-V2 (236B MoE, 21B activated): Fits easily (~40-50GB VRAM)
 #
-# Enable: terraform apply -var="enable_deepseek_gpu_tee=true"
+# Enable: terraform apply -var="enable_gpu_tee=true"
 #
 # Prerequisites:
 #   1. Request quota for NCCads_H100_v5 from Azure support
@@ -28,11 +28,8 @@
 #
 # ==============================================================================
 
-variable "enable_deepseek_gpu_tee" {
-  description = "Enable GPU Confidential Computing deployment (NCCads_H100_v5)"
-  type        = bool
-  default     = false
-}
+# Note: This variable is defined in main.tf as "enable_gpu_tee"
+# We use a local alias for backward compatibility within this file
 
 variable "deepseek_gpu_tee_location" {
   description = "Azure region for GPU TEE VM (must be eastus2 or westeurope)"
@@ -67,7 +64,7 @@ variable "deepseek_gpu_tee_model" {
 # ==============================================================================
 
 resource "azurerm_virtual_network" "deepseek_gpu_tee" {
-  count               = var.enable_deepseek_gpu_tee ? 1 : 0
+  count               = var.enable_gpu_tee ? 1 : 0
   name                = "vibe-deepseek-gpu-tee-vnet"
   location            = var.deepseek_gpu_tee_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -79,7 +76,7 @@ resource "azurerm_virtual_network" "deepseek_gpu_tee" {
 }
 
 resource "azurerm_subnet" "deepseek_gpu_tee" {
-  count                = var.enable_deepseek_gpu_tee ? 1 : 0
+  count                = var.enable_gpu_tee ? 1 : 0
   name                 = "gpu-tee-subnet"
   resource_group_name  = data.azurerm_resource_group.vibe.name
   virtual_network_name = azurerm_virtual_network.deepseek_gpu_tee[0].name
@@ -87,7 +84,7 @@ resource "azurerm_subnet" "deepseek_gpu_tee" {
 }
 
 resource "azurerm_network_security_group" "deepseek_gpu_tee" {
-  count               = var.enable_deepseek_gpu_tee ? 1 : 0
+  count               = var.enable_gpu_tee ? 1 : 0
   name                = "vibe-deepseek-gpu-tee-nsg"
   location            = var.deepseek_gpu_tee_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -146,13 +143,13 @@ resource "azurerm_network_security_group" "deepseek_gpu_tee" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "deepseek_gpu_tee" {
-  count                     = var.enable_deepseek_gpu_tee ? 1 : 0
+  count                     = var.enable_gpu_tee ? 1 : 0
   subnet_id                 = azurerm_subnet.deepseek_gpu_tee[0].id
   network_security_group_id = azurerm_network_security_group.deepseek_gpu_tee[0].id
 }
 
 resource "azurerm_public_ip" "deepseek_gpu_tee" {
-  count               = var.enable_deepseek_gpu_tee ? 1 : 0
+  count               = var.enable_gpu_tee ? 1 : 0
   name                = "vibe-deepseek-gpu-tee-pip"
   location            = var.deepseek_gpu_tee_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -165,7 +162,7 @@ resource "azurerm_public_ip" "deepseek_gpu_tee" {
 }
 
 resource "azurerm_network_interface" "deepseek_gpu_tee" {
-  count               = var.enable_deepseek_gpu_tee ? 1 : 0
+  count               = var.enable_gpu_tee ? 1 : 0
   name                = "vibe-deepseek-gpu-tee-nic"
   location            = var.deepseek_gpu_tee_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -437,7 +434,7 @@ locals {
 # ==============================================================================
 
 resource "azapi_resource" "deepseek_gpu_tee_vm" {
-  count     = var.enable_deepseek_gpu_tee ? 1 : 0
+  count     = var.enable_gpu_tee ? 1 : 0
   type      = "Microsoft.Compute/virtualMachines@2024-03-01"
   name      = "vibe-deepseek-gpu-tee"
   location  = var.deepseek_gpu_tee_location
@@ -521,30 +518,30 @@ resource "azapi_resource" "deepseek_gpu_tee_vm" {
 
 output "deepseek_gpu_tee_enabled" {
   description = "Whether GPU TEE deployment is enabled"
-  value       = var.enable_deepseek_gpu_tee
+  value       = var.enable_gpu_tee
 }
 
 output "deepseek_gpu_tee_public_ip" {
   description = "Public IP for SSH access"
-  value       = var.enable_deepseek_gpu_tee ? azurerm_public_ip.deepseek_gpu_tee[0].ip_address : null
+  value       = var.enable_gpu_tee ? azurerm_public_ip.deepseek_gpu_tee[0].ip_address : null
 }
 
 output "deepseek_gpu_tee_ssh_command" {
   description = "SSH command to access the GPU TEE VM"
-  value       = var.enable_deepseek_gpu_tee ? "ssh azureuser@${azurerm_public_ip.deepseek_gpu_tee[0].ip_address}" : null
+  value       = var.enable_gpu_tee ? "ssh azureuser@${azurerm_public_ip.deepseek_gpu_tee[0].ip_address}" : null
 }
 
 output "deepseek_gpu_tee_attestation_endpoint" {
   description = "Attestation API endpoint"
-  value       = var.enable_deepseek_gpu_tee ? "http://${azurerm_public_ip.deepseek_gpu_tee[0].ip_address}:4001/v1/attestation" : null
+  value       = var.enable_gpu_tee ? "http://${azurerm_public_ip.deepseek_gpu_tee[0].ip_address}:4001/v1/attestation" : null
 }
 
 output "deepseek_gpu_tee_litellm_endpoint" {
   description = "LiteLLM API endpoint"
-  value       = var.enable_deepseek_gpu_tee ? "http://${azurerm_public_ip.deepseek_gpu_tee[0].ip_address}:4000/v1/chat/completions" : null
+  value       = var.enable_gpu_tee ? "http://${azurerm_public_ip.deepseek_gpu_tee[0].ip_address}:4000/v1/chat/completions" : null
 }
 
 output "deepseek_gpu_tee_cost_estimate" {
   description = "Estimated monthly cost"
-  value       = var.enable_deepseek_gpu_tee ? "~$6,000-8,600/month ($8-12/hour)" : null
+  value       = var.enable_gpu_tee ? "~$6,000-8,600/month ($8-12/hour)" : null
 }

@@ -12,18 +12,15 @@
 # Model: deepseek-r1:1.5b (1.1GB, fastest inference on CPU)
 # Current Deployment: DC4es_v5 with Intel TDX (verified)
 #
-# Enable: terraform apply -var="enable_deepseek_confidential=true"
+# Enable: terraform apply -var="enable_cpu_tee=true"
 #
 # Verify TEE: 
 #   Intel TDX: ssh azureuser@<ip> "dmesg | grep -i tdx"
 #   AMD SEV:   ssh azureuser@<ip> "dmesg | grep -i sev"
 # ==============================================================================
 
-variable "enable_deepseek_confidential" {
-  description = "Enable DeepSeek Confidential VM (true TEE) deployment"
-  type        = bool
-  default     = false
-}
+# Note: This variable is defined in main.tf as "enable_cpu_tee"
+# We use a local alias for backward compatibility within this file
 
 variable "deepseek_confidential_location" {
   description = "Azure region for Confidential VM"
@@ -53,7 +50,7 @@ variable "deepseek_confidential_model" {
 # ==============================================================================
 
 resource "azurerm_virtual_network" "deepseek_confidential" {
-  count               = var.enable_deepseek_confidential ? 1 : 0
+  count               = var.enable_cpu_tee ? 1 : 0
   name                = "vibe-deepseek-cvm-vnet"
   location            = var.deepseek_confidential_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -65,7 +62,7 @@ resource "azurerm_virtual_network" "deepseek_confidential" {
 }
 
 resource "azurerm_subnet" "deepseek_confidential" {
-  count                = var.enable_deepseek_confidential ? 1 : 0
+  count                = var.enable_cpu_tee ? 1 : 0
   name                 = "cvm-subnet"
   resource_group_name  = data.azurerm_resource_group.vibe.name
   virtual_network_name = azurerm_virtual_network.deepseek_confidential[0].name
@@ -73,7 +70,7 @@ resource "azurerm_subnet" "deepseek_confidential" {
 }
 
 resource "azurerm_network_security_group" "deepseek_confidential" {
-  count               = var.enable_deepseek_confidential ? 1 : 0
+  count               = var.enable_cpu_tee ? 1 : 0
   name                = "vibe-deepseek-cvm-nsg"
   location            = var.deepseek_confidential_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -156,13 +153,13 @@ resource "azurerm_network_security_group" "deepseek_confidential" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "deepseek_confidential" {
-  count                     = var.enable_deepseek_confidential ? 1 : 0
+  count                     = var.enable_cpu_tee ? 1 : 0
   subnet_id                 = azurerm_subnet.deepseek_confidential[0].id
   network_security_group_id = azurerm_network_security_group.deepseek_confidential[0].id
 }
 
 resource "azurerm_public_ip" "deepseek_confidential" {
-  count               = var.enable_deepseek_confidential ? 1 : 0
+  count               = var.enable_cpu_tee ? 1 : 0
   name                = "vibe-deepseek-cvm-pip"
   location            = var.deepseek_confidential_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -175,7 +172,7 @@ resource "azurerm_public_ip" "deepseek_confidential" {
 }
 
 resource "azurerm_network_interface" "deepseek_confidential" {
-  count               = var.enable_deepseek_confidential ? 1 : 0
+  count               = var.enable_cpu_tee ? 1 : 0
   name                = "vibe-deepseek-cvm-nic"
   location            = var.deepseek_confidential_location
   resource_group_name = data.azurerm_resource_group.vibe.name
@@ -307,7 +304,7 @@ locals {
 
 # Use azapi for Confidential VM since azurerm 3.x doesn't support it
 resource "azapi_resource" "deepseek_confidential_vm" {
-  count     = var.enable_deepseek_confidential ? 1 : 0
+  count     = var.enable_cpu_tee ? 1 : 0
   type      = "Microsoft.Compute/virtualMachines@2024-03-01"
   name      = "vibe-deepseek-cvm"
   location  = var.deepseek_confidential_location
@@ -391,25 +388,25 @@ resource "azapi_resource" "deepseek_confidential_vm" {
 
 output "deepseek_confidential_enabled" {
   description = "Whether DeepSeek Confidential VM is enabled"
-  value       = var.enable_deepseek_confidential
+  value       = var.enable_cpu_tee
 }
 
 output "deepseek_confidential_public_ip" {
   description = "Public IP for SSH access"
-  value       = var.enable_deepseek_confidential ? azurerm_public_ip.deepseek_confidential[0].ip_address : null
+  value       = var.enable_cpu_tee ? azurerm_public_ip.deepseek_confidential[0].ip_address : null
 }
 
 output "deepseek_confidential_ssh_command" {
   description = "SSH command to access the Confidential VM"
-  value       = var.enable_deepseek_confidential ? "ssh azureuser@${azurerm_public_ip.deepseek_confidential[0].ip_address}" : null
+  value       = var.enable_cpu_tee ? "ssh azureuser@${azurerm_public_ip.deepseek_confidential[0].ip_address}" : null
 }
 
 output "deepseek_confidential_tee_verify" {
   description = "Command to verify TEE is active"
-  value       = var.enable_deepseek_confidential ? "ssh azureuser@${azurerm_public_ip.deepseek_confidential[0].ip_address} 'dmesg | grep -i sev'" : null
+  value       = var.enable_cpu_tee ? "ssh azureuser@${azurerm_public_ip.deepseek_confidential[0].ip_address} 'dmesg | grep -i sev'" : null
 }
 
 output "deepseek_confidential_litellm_endpoint" {
   description = "LiteLLM API endpoint"
-  value       = var.enable_deepseek_confidential ? "http://${azurerm_public_ip.deepseek_confidential[0].ip_address}:4000/v1/chat/completions" : null
+  value       = var.enable_cpu_tee ? "http://${azurerm_public_ip.deepseek_confidential[0].ip_address}:4000/v1/chat/completions" : null
 }
