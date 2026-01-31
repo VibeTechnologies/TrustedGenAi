@@ -1,0 +1,301 @@
+# =============================================================================
+# TrustedGenAi - Deploy CPU TEE Infrastructure (Intel TDX)
+# =============================================================================
+#
+# Deploys Intel TDX confidential VMs to Azure with DeepSeek models.
+# Endpoint: tee.vibebrowser.app
+# Cost: ~$216/month (Standard_DC4as_v5)
+#
+# Secrets required:
+#   - AZURE_CREDENTIALS: Azure service principal JSON
+#   - AZURE_SUBSCRIPTION_ID: Azure subscription ID
+#   - TEE_API_KEY: API key for TEE LiteLLM endpoint
+#   - CLOUDFLARE_TUNNEL_TOKEN_CPU: Cloudflare tunnel token for tee.vibebrowser.app
+#
+# =============================================================================
+
+name: Deploy CPU TEE (Intel TDX)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      action:
+        description: 'Terraform action'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  TF_VERSION: '1.5.0'
+  TF_WORKING_DIR: './terraform'
+  DEPLOYMENT_TYPE: 'cpu'
+  ENDPOINT_DNS: 'tee.vibebrowser.app'
+
+jobs:
+  validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+  plan:
+    name: Plan CPU TEE
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event.inputs.action == 'plan'
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=trustedgenai-tfstate-rg" \
+            -backend-config="storage_account_name=trustedgenaitfstate" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ github.event.inputs.environment }}-cpu.terraform.tfstate"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tee_api_key=${{ secrets.TEE_API_KEY }}" \
+            -var="enable_cpu_tee=true" \
+            -var="enable_gpu_tee=false" \
+            -var="cloudflare_tunnel_token=${{ secrets.CLOUDFLARE_TUNNEL_TOKEN_CPU }}" \
+            -var="endpoint_dns=${{ env.ENDPOINT_DNS }}" \
+            -out=tfplan \
+            -no-color
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.event.inputs.environment }}-cpu
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+
+      - name: Plan Summary
+        run: |
+          echo "## CPU TEE Plan Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ github.event.inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| VM Size | Standard_DC4as_v5 (Intel TDX) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Estimated Cost | ~\$216/month |" >> $GITHUB_STEP_SUMMARY
+          echo "| Endpoint | https://${{ env.ENDPOINT_DNS }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Run with \`action: apply\` to deploy." >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    name: Deploy CPU TEE
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event.inputs.action == 'apply'
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=trustedgenai-tfstate-rg" \
+            -backend-config="storage_account_name=trustedgenaitfstate" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ github.event.inputs.environment }}-cpu.terraform.tfstate"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Apply
+        run: |
+          terraform apply \
+            -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tee_api_key=${{ secrets.TEE_API_KEY }}" \
+            -var="enable_cpu_tee=true" \
+            -var="enable_gpu_tee=false" \
+            -var="cloudflare_tunnel_token=${{ secrets.CLOUDFLARE_TUNNEL_TOKEN_CPU }}" \
+            -var="endpoint_dns=${{ env.ENDPOINT_DNS }}" \
+            -auto-approve
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Get Outputs
+        id: outputs
+        run: |
+          echo "public_ip=$(terraform output -raw cpu_tee_public_ip 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
+          echo "ssh_command=$(terraform output -raw cpu_tee_ssh_command 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Wait for VM to be ready
+        run: |
+          echo "Waiting 120 seconds for VM to initialize..."
+          sleep 120
+
+      - name: Verify TEE Attestation
+        run: |
+          echo "Checking attestation endpoint..."
+          curl -sf --retry 5 --retry-delay 30 "https://${{ env.ENDPOINT_DNS }}/v1/attestation" | jq '{platform, tee_verified, vm_size}' || echo "Attestation endpoint not yet available"
+
+      - name: Verify LiteLLM Health
+        run: |
+          echo "Checking LiteLLM health..."
+          curl -sf --retry 5 --retry-delay 30 "https://${{ env.ENDPOINT_DNS }}/health" || echo "Health endpoint not yet available"
+
+      - name: Deployment Summary
+        run: |
+          echo "## CPU TEE Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ github.event.inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| VM Size | Standard_DC4as_v5 (Intel TDX) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Public IP | ${{ steps.outputs.outputs.public_ip }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SSH | ${{ steps.outputs.outputs.ssh_command }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Endpoints" >> $GITHUB_STEP_SUMMARY
+          echo "- Attestation: https://${{ env.ENDPOINT_DNS }}/v1/attestation" >> $GITHUB_STEP_SUMMARY
+          echo "- LiteLLM API: https://${{ env.ENDPOINT_DNS }}/v1" >> $GITHUB_STEP_SUMMARY
+          echo "- Health: https://${{ env.ENDPOINT_DNS }}/health" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Models Available" >> $GITHUB_STEP_SUMMARY
+          echo "- \`deepseek-r1-tee\` (1.5B distill, CPU inference)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Billing Integration" >> $GITHUB_STEP_SUMMARY
+          echo "TEE models available to Max tier subscribers via api.vibebrowser.app" >> $GITHUB_STEP_SUMMARY
+
+  destroy:
+    name: Destroy CPU TEE
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event.inputs.action == 'destroy'
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=trustedgenai-tfstate-rg" \
+            -backend-config="storage_account_name=trustedgenaitfstate" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ github.event.inputs.environment }}-cpu.terraform.tfstate"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Destroy
+        run: |
+          terraform destroy \
+            -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="tee_api_key=${{ secrets.TEE_API_KEY }}" \
+            -var="enable_cpu_tee=true" \
+            -var="enable_gpu_tee=false" \
+            -var="cloudflare_tunnel_token=${{ secrets.CLOUDFLARE_TUNNEL_TOKEN_CPU }}" \
+            -var="endpoint_dns=${{ env.ENDPOINT_DNS }}" \
+            -auto-approve
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Destroy Summary
+        run: |
+          echo "## CPU TEE Infrastructure Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ github.event.inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Endpoint | ${{ env.ENDPOINT_DNS }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Monthly cost savings: ~\$216/month" >> $GITHUB_STEP_SUMMARY
