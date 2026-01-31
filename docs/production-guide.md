@@ -88,6 +88,8 @@ Customer Browser Extension
 | `deepseek-r1` | 1.1GB | ~12 tok/s | Good | Default, fast responses |
 | `deepseek-r1-1.5b` | 1.1GB | ~12 tok/s | Good | Alias for deepseek-r1 |
 | `deepseek-r1-7b` | 4.7GB | ~0.7 tok/s | Better | Complex reasoning |
+| `qwen-coder` | 1.0GB | ~15 tok/s | Good | Tool calling, code generation |
+| `qwen2.5-coder-1.5b` | 1.0GB | ~15 tok/s | Good | Alias for qwen-coder |
 
 ## Attestation Verification
 
@@ -192,13 +194,13 @@ sudo dmesg | grep -i tdx
 
 1. **TEE Protection**: All memory encrypted by Intel TDX hardware
 2. **API Key**: Currently `sk-tee-deepseek-key` - change for production
-3. **Network**: Currently HTTP - add Cloudflare/TLS for production
+3. **Network**: HTTPS via Cloudflare Tunnel (tee.vibebrowser.app)
 4. **Attestation**: Verify before every sensitive operation
 
-## Next Steps for Production
+## Production Status
 
 1. [x] Add HTTPS via Cloudflare Tunnel
-2. [ ] Rotate API key and store in Azure Key Vault
-3. [ ] Add rate limiting in LiteLLM config
-4. [ ] Consider GPU TEE (NCC H100) for faster inference
-5. [ ] Integrate attestation verification in browser extension
+2. [x] Integrate attestation verification in browser extension (Confidential Mode toggle)
+3. [ ] Rotate API key and store in Azure Key Vault
+4. [ ] Add rate limiting in LiteLLM config
+5. [ ] Consider GPU TEE (NCC H100) for faster inference

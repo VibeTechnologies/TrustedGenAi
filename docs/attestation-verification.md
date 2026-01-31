@@ -185,12 +185,22 @@ async function safeTEERequest(message) {
 
 ## VibeBrowser Extension Integration
 
-The extension automatically verifies TEE attestation when using the `vibe-tee` provider:
+The VibeBrowser extension integrates TEE inference via a **Confidential Mode** toggle:
 
-1. Select "Self-Hosted TEE" in extension settings
-2. Extension fetches attestation on first request
-3. Attestation is cached and refreshed periodically
-4. All requests go to verified TEE backend
+1. Open the VibeBrowser sidepanel
+2. Look for the shield icon button in the header (MAX tier required)
+3. Click to enable "Confidential Mode: ON (TEE)"
+4. All subsequent requests are routed to the TEE backend transparently
+5. Attestation is verified automatically on first request
+
+| Confidential Mode OFF | Confidential Mode ON |
+|----------------------|---------------------|
+| ![Confidential Mode OFF](images/confidential-mode-off.png) | ![Confidential Mode ON](images/confidential-mode-on.png) |
+
+When Confidential Mode is enabled:
+- Requests go to `tee.vibebrowser.app` instead of standard API
+- Your prompts are processed on Intel TDX encrypted memory
+- Model responses never leave the TEE enclave unencrypted
 
 ## Endpoints
 
